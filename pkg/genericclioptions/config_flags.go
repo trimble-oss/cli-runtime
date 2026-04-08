@@ -26,14 +26,17 @@ import (
 
 	"github.com/spf13/pflag"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/discovery"
 	diskcached "k8s.io/client-go/discovery/cached/disk"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/utils/ptr"
 )
@@ -76,6 +79,12 @@ type RESTClientGetter interface {
 }
 
 var _ RESTClientGetter = &ConfigFlags{}
+
+type KubeConfigLoader func(path string) (*clientcmdapi.Config, error)
+type PathVisitorLoader func() resource.PathVisitor
+type HandleSecretFromFileSources func(secret *corev1.Secret, fileSources []string) error
+type HandleConfigMapFromFileSources func(configMap *corev1.ConfigMap, fileSources []string) error
+type HandleConfigMapFromEnvFileSources func(configMap *corev1.ConfigMap, envFileSources []string) error
 
 // ConfigFlags composes the set of values necessary
 // for obtaining a REST client config
@@ -129,6 +138,13 @@ type ConfigFlags struct {
 	// Allows all possible warnings are printed in a standardized
 	// format.
 	warningPrinter *printers.WarningPrinter
+
+	KubeConfigLoader  KubeConfigLoader
+	PathVisitorLoader PathVisitorLoader
+
+	HandleSecretFromFileSources       HandleSecretFromFileSources
+	HandleConfigMapFromFileSources    HandleConfigMapFromFileSources
+	HandleConfigMapFromEnvFileSources HandleConfigMapFromEnvFileSources
 }
 
 // ToRESTConfig implements RESTClientGetter.
@@ -159,6 +175,10 @@ func (f *ConfigFlags) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 
 func (f *ConfigFlags) toRawKubeConfigLoader() clientcmd.ClientConfig {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if f.KubeConfigLoader != nil {
+		loadingRules.KubeConfigLoader = f.KubeConfigLoader
+	}
+
 	// use the standard defaults for this client command
 	// DEPRECATED: remove and replace with something more accurate
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig

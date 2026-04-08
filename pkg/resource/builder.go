@@ -111,6 +111,8 @@ type Builder struct {
 
 	schema ContentValidator
 
+	pathVisitor PathVisitor
+
 	// fakeClientFn is used for testing
 	fakeClientFn FakeClientFunc
 }
@@ -172,8 +174,8 @@ type resourceTuple struct {
 
 type FakeClientFunc func(version schema.GroupVersion) (RESTClient, error)
 
-func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc) *Builder {
-	ret := newBuilder(nil, restMapper, categoryExpander)
+func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc, pathVisitor PathVisitor) *Builder {
+	ret := newBuilder(nil, restMapper, categoryExpander, pathVisitor)
 	ret.fakeClientFn = fakeClientFn
 	return ret
 }
@@ -182,12 +184,13 @@ func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper RESTMapperFunc, cate
 // internal or unstructured must be specified.
 // TODO: Add versioned client (although versioned is still lossy)
 // TODO remove internal and unstructured mapper and instead have them set the negotiated serializer for use in the client
-func newBuilder(clientConfigFn ClientConfigFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc) *Builder {
+func newBuilder(clientConfigFn ClientConfigFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc, pathVisitor PathVisitor) *Builder {
 	return &Builder{
 		clientConfigFn:     clientConfigFn,
 		restMapperFn:       restMapper,
 		categoryExpanderFn: categoryExpander,
 		requireObject:      true,
+		pathVisitor:        pathVisitor,
 	}
 }
 
@@ -207,10 +210,10 @@ func (noopClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
 
 // NewLocalBuilder returns a builder that is configured not to create REST clients and avoids asking the server for results.
 func NewLocalBuilder() *Builder {
-	return NewBuilder(noopClientGetter{}).Local()
+	return NewBuilder(noopClientGetter{}, &FilePathVisitor{}).Local()
 }
 
-func NewBuilder(restClientGetter RESTClientGetter) *Builder {
+func NewBuilder(restClientGetter RESTClientGetter, pathVisitor PathVisitor) *Builder {
 	categoryExpanderFn := func() (restmapper.CategoryExpander, error) {
 		discoveryClient, err := restClientGetter.ToDiscoveryClient()
 		if err != nil {
@@ -223,6 +226,7 @@ func NewBuilder(restClientGetter RESTClientGetter) *Builder {
 		restClientGetter.ToRESTConfig,
 		restClientGetter.ToRESTMapper,
 		(&cachingCategoryExpanderFunc{delegate: categoryExpanderFn}).ToCategoryExpander,
+		pathVisitor,
 	)
 }
 
@@ -271,10 +275,17 @@ func (b *Builder) FilenameParam(enforceNamespace bool, filenameOptions *Filename
 			}
 			b.URL(defaultHttpGetAttempts, url)
 		default:
-			matches, err := expandIfFilePattern(s)
-			if err != nil {
-				b.errs = append(b.errs, err)
-				continue
+			var matches []string
+			if _, fpOk := b.pathVisitor.(*FilePathVisitor); fpOk {
+				var err error
+				matches, err = expandIfFilePattern(s)
+				if err != nil {
+					b.errs = append(b.errs, err)
+					continue
+				}
+			} else {
+				// TODO: Better support for non-FilePathVisitor.
+				matches = []string{s}
 			}
 			if !recursive && len(matches) == 1 {
 				b.singleItemImplied = true
@@ -395,7 +406,7 @@ func (b *Builder) Stdin() *Builder {
 		b.errs = append(b.errs, StdinMultiUseError)
 	}
 	b.stdinInUse = true
-	b.paths = append(b.paths, FileVisitorForSTDIN(b.mapper, b.schema))
+	b.paths = append(b.paths, b.pathVisitor.FileVisitorForSTDIN(b))
 	return b
 }
 
@@ -428,17 +439,19 @@ func (b *Builder) Stream(r io.Reader, name string) *Builder {
 // ignored (but logged at V(2)).
 func (b *Builder) Path(recursive bool, paths ...string) *Builder {
 	for _, p := range paths {
-		_, err := os.Stat(p)
-		if os.IsNotExist(err) {
-			b.errs = append(b.errs, fmt.Errorf(pathNotExistError, p))
-			continue
-		}
-		if err != nil {
-			b.errs = append(b.errs, fmt.Errorf("the path %q cannot be accessed: %v", p, err))
-			continue
+		if _, fpOk := b.pathVisitor.(*FilePathVisitor); fpOk {
+			_, err := os.Stat(p)
+			if os.IsNotExist(err) {
+				b.errs = append(b.errs, fmt.Errorf(pathNotExistError, p))
+				continue
+			}
+			if err != nil {
+				b.errs = append(b.errs, fmt.Errorf("the path %q cannot be accessed: %v", p, err))
+				continue
+			}
 		}
 
-		visitors, err := ExpandPathsToFileVisitors(b.mapper, p, recursive, FileExtensions, b.schema)
+		visitors, err := b.pathVisitor.ExpandPathsToFileVisitors(b.mapper, p, recursive, FileExtensions, b.schema)
 		if err != nil {
 			b.errs = append(b.errs, fmt.Errorf("error reading %q: %v", p, err))
 		}
@@ -1196,6 +1209,10 @@ func (b *Builder) Do() *Result {
 	}
 	r.visitor = NewDecoratedVisitor(r.visitor, helpers...)
 	return r
+}
+
+func (b *Builder) NewStreamVisitorHelper(newStreamVisitor func(r io.Reader, m interface{}, source string, schema ContentValidator) *StreamVisitor, reader io.Reader) *StreamVisitor {
+	return newStreamVisitor(reader, b.mapper, constSTDINstr, b.schema)
 }
 
 // SplitResourceArgument splits the argument with commas and returns unique
