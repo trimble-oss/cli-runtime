@@ -283,8 +283,7 @@ func (v *URLVisitor) Visit(fn VisitorFunc) error {
 	return v.StreamVisitor.Visit(fn)
 }
 
-type FilePathVisitor struct {
-}
+type FilePathVisitor struct{}
 
 func (*FilePathVisitor) FileVisitorForSTDIN(builder *Builder) Visitor {
 	return FileVisitorForSTDIN(builder.mapper, builder.schema)
@@ -319,7 +318,6 @@ func (*FilePathVisitor) ExpandPathsToFileVisitors(mapper InfoMapper, paths strin
 		visitors = append(visitors, visitor)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +347,6 @@ func readHttpWithRetries(get httpget, duration time.Duration, u string, attempts
 
 		// Try to get the URL
 		statusCode, status, body, err = get(u)
-
 		// Retry Errors
 		if err != nil {
 			continue

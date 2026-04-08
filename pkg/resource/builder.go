@@ -42,11 +42,15 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
-var FileExtensions = []string{".json", ".yaml", ".yml"}
-var InputExtensions = append(FileExtensions, "stdin")
+var (
+	FileExtensions  = []string{".json", ".yaml", ".yml"}
+	InputExtensions = append(FileExtensions, "stdin")
+)
 
-const defaultHttpGetAttempts = 3
-const pathNotExistError = "the path %q does not exist"
+const (
+	defaultHttpGetAttempts = 3
+	pathNotExistError      = "the path %q does not exist"
+)
 
 // Builder provides convenience functions for taking arguments and parameters
 // from the command line and converting them to a list of resources to iterate
@@ -205,9 +209,11 @@ type noopClientGetter struct{}
 func (noopClientGetter) ToRESTConfig() (*rest.Config, error) {
 	return nil, fmt.Errorf("local operation only")
 }
+
 func (noopClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
 	return nil, fmt.Errorf("local operation only")
 }
+
 func (noopClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
 	return nil, fmt.Errorf("local operation only")
 }

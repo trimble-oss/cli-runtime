@@ -33,6 +33,7 @@ import (
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/discovery"
 	diskcached "k8s.io/client-go/discovery/cached/disk"
+	cachedmemory "k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
@@ -80,11 +81,13 @@ type RESTClientGetter interface {
 
 var _ RESTClientGetter = &ConfigFlags{}
 
-type KubeConfigLoader func(path string) (*clientcmdapi.Config, error)
-type PathVisitorLoader func() resource.PathVisitor
-type HandleSecretFromFileSources func(secret *corev1.Secret, fileSources []string) error
-type HandleConfigMapFromFileSources func(configMap *corev1.ConfigMap, fileSources []string) error
-type HandleConfigMapFromEnvFileSources func(configMap *corev1.ConfigMap, envFileSources []string) error
+type (
+	KubeConfigLoader                  func(path string) (*clientcmdapi.Config, error)
+	PathVisitorLoader                 func() resource.PathVisitor
+	HandleSecretFromFileSources       func(secret *corev1.Secret, fileSources []string) error
+	HandleConfigMapFromFileSources    func(configMap *corev1.ConfigMap, fileSources []string) error
+	HandleConfigMapFromEnvFileSources func(configMap *corev1.ConfigMap, envFileSources []string) error
+)
 
 type customClientConfigLoader struct {
 	*clientcmd.ClientConfigLoadingRules
@@ -328,6 +331,16 @@ func (f *ConfigFlags) toDiscoveryClient() (discovery.CachedDiscoveryInterface, e
 
 	config.Burst = f.discoveryBurst
 	config.QPS = f.discoveryQPS
+
+	// Tierceron routes kubeconfig and manifest handling through in-memory hooks.
+	// Avoid discovery cache writes to ~/.kube/cache for those paths.
+	if f.KubeConfigLoader != nil || f.PathVisitorLoader != nil {
+		discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return cachedmemory.NewMemCacheClient(discoveryClient), nil
+	}
 
 	cacheDir := getDefaultCacheDir()
 
