@@ -86,6 +86,18 @@ type HandleSecretFromFileSources func(secret *corev1.Secret, fileSources []strin
 type HandleConfigMapFromFileSources func(configMap *corev1.ConfigMap, fileSources []string) error
 type HandleConfigMapFromEnvFileSources func(configMap *corev1.ConfigMap, envFileSources []string) error
 
+type customClientConfigLoader struct {
+	*clientcmd.ClientConfigLoadingRules
+	kubeConfigLoader KubeConfigLoader
+}
+
+func (c *customClientConfigLoader) Load() (*clientcmdapi.Config, error) {
+	if c.kubeConfigLoader != nil {
+		return c.kubeConfigLoader(c.ExplicitPath)
+	}
+	return c.ClientConfigLoadingRules.Load()
+}
+
 // ConfigFlags composes the set of values necessary
 // for obtaining a REST client config
 type ConfigFlags struct {
@@ -175,9 +187,7 @@ func (f *ConfigFlags) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 
 func (f *ConfigFlags) toRawKubeConfigLoader() clientcmd.ClientConfig {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if f.KubeConfigLoader != nil {
-		loadingRules.KubeConfigLoader = f.KubeConfigLoader
-	}
+	customLoader := &customClientConfigLoader{ClientConfigLoadingRules: loadingRules, kubeConfigLoader: f.KubeConfigLoader}
 
 	// use the standard defaults for this client command
 	// DEPRECATED: remove and replace with something more accurate
@@ -268,9 +278,9 @@ func (f *ConfigFlags) toRawKubeConfigLoader() clientcmd.ClientConfig {
 
 	// we only have an interactive prompt when a password is allowed
 	if f.Password == nil {
-		return &clientConfig{clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)}
+		return &clientConfig{clientcmd.NewNonInteractiveDeferredLoadingClientConfig(customLoader, overrides)}
 	}
-	return &clientConfig{clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, overrides, os.Stdin)}
+	return &clientConfig{clientcmd.NewInteractiveDeferredLoadingClientConfig(customLoader, overrides, os.Stdin)}
 }
 
 // toRawKubePersistentConfigLoader binds config flag values to config overrides

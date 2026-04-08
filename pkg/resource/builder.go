@@ -174,7 +174,11 @@ type resourceTuple struct {
 
 type FakeClientFunc func(version schema.GroupVersion) (RESTClient, error)
 
-func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc, pathVisitor PathVisitor) *Builder {
+func NewFakeBuilder(fakeClientFn FakeClientFunc, restMapper RESTMapperFunc, categoryExpander CategoryExpanderFunc, pathVisitors ...PathVisitor) *Builder {
+	pathVisitor := PathVisitor(&FilePathVisitor{})
+	if len(pathVisitors) > 0 && pathVisitors[0] != nil {
+		pathVisitor = pathVisitors[0]
+	}
 	ret := newBuilder(nil, restMapper, categoryExpander, pathVisitor)
 	ret.fakeClientFn = fakeClientFn
 	return ret

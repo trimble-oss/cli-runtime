@@ -326,6 +326,11 @@ func (*FilePathVisitor) ExpandPathsToFileVisitors(mapper InfoMapper, paths strin
 	return visitors, nil
 }
 
+// ExpandPathsToFileVisitors keeps compatibility with existing callers by delegating to FilePathVisitor.
+func ExpandPathsToFileVisitors(mapper *mapper, paths string, recursive bool, extensions []string, schema ContentValidator) ([]Visitor, error) {
+	return (&FilePathVisitor{}).ExpandPathsToFileVisitors(mapper, paths, recursive, extensions, schema)
+}
+
 // readHttpWithRetries tries to http.Get the v.URL retries times before giving up.
 func readHttpWithRetries(get httpget, duration time.Duration, u string, attempts int) (io.ReadCloser, error) {
 	var err error
