@@ -85,6 +85,7 @@ type (
 	KubeConfigLoader                  func(path string) (*clientcmdapi.Config, error)
 	PathVisitorLoader                 func() resource.PathVisitor
 	HandleSecretFromFileSources       func(secret *corev1.Secret, fileSources []string) error
+	HandleSecretFromEnvFileSources    func(secret *corev1.Secret, envFileSources []string) error
 	HandleConfigMapFromFileSources    func(configMap *corev1.ConfigMap, fileSources []string) error
 	HandleConfigMapFromEnvFileSources func(configMap *corev1.ConfigMap, envFileSources []string) error
 )
@@ -158,6 +159,7 @@ type ConfigFlags struct {
 	PathVisitorLoader PathVisitorLoader
 
 	HandleSecretFromFileSources       HandleSecretFromFileSources
+	HandleSecretFromEnvFileSources    HandleSecretFromEnvFileSources
 	HandleConfigMapFromFileSources    HandleConfigMapFromFileSources
 	HandleConfigMapFromEnvFileSources HandleConfigMapFromEnvFileSources
 }
